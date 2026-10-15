@@ -1,10 +1,24 @@
 import requests
+import argparse
 import sys, getopt, os 
 from pathlib import Path
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urldefrag
 
 directory_path = "./data/"
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog='my scrapper', description='scrapper')
+    parser.add_argument("url", help="url to scrape")
+    parser.add_argument("-r", action="store_true", help="enable recursivity")
+    parser.add_argument("-l", type=int, default=5, help="max depth")
+    parser.add_argument("-p", default="./data/", help="path to download images to")
+    parser.print_help()
+    args = parser.parse_args()
+    if args.r == False:
+        args.l = 1
+    return args
+
 
 def create_save_directory() -> None:
     directory = Path(directory_path)
@@ -31,7 +45,6 @@ def extract_images(content, page_url) -> set[str]:
     soup = BeautifulSoup(content, 'html.parser')
 
     images = soup.find_all('img')
-    print(len(images))
     for image in images:
         img_url = urljoin(page_url, image.get('src'))
         parsed_url = urlparse(img_url)
@@ -69,6 +82,8 @@ def extract_links(content, page_url) -> set[str]:
 
 def download_img(img_url) -> None:
     try:
+        # if img_url in visited_urls:
+        #     return 
         r = requests.get(img_url, headers={"User-Agent": "USER_AGENT"})
         r.raise_for_status()
         img_data = r.content
@@ -81,22 +96,52 @@ def download_img(img_url) -> None:
         raise
     print(img_url + ":" + str(r.status_code))
 
-
-def scrape(page_url) -> None:
+def scrape(args, url, visited_urls, depth = 0) -> None:
+    if depth >= args.l:
+        return
+    if url in visited_urls:
+        return
     try:
-        print(page_url)
-        content = fetch_page(page_url)
-        set_imgs = extract_images(content, page_url)
+        visited_urls.add(url)
+        content = fetch_page(url)
+        set_imgs = extract_images(content, url)
+        print("number of imgs found:" + str(len(set_imgs)))
         for img_url in set_imgs:
             download_img(img_url)
-        set_links = extract_links(content, page_url)
+            # visited_urls.add(img_url)
+        set_links = extract_links(content, url)
+        print("number of url found:" + str(len(set_links)))
+        for link in set_links:
+            scrape(args, link, visited_urls, depth + 1)
     except Exception as e:
-        print("Error:", e)
+        print("Error with url:" + url)
+
+
+# def scrape(args) -> None:
+#     try:
+#         print(args.url)
+#         content = fetch_page(args.url)
+#         set_imgs = extract_images(content, args.url)
+#         print("number img:" + str(len(set_imgs)))
+#         for img_url in set_imgs:
+#             download_img(img_url)
+#         set_links = extract_links(content, args.url)
+#         # if args.r == True:
+#             # for link in links:
+#                 # download_images_recusively(args, link)
+#     except Exception as e:
+#         print("Error:", e)
 
 def main() -> None:
+    args = parse_args()
     create_save_directory()
-    scrape(sys.argv[1])
-    
+    visited_urls = set()
+    # scrape(args)
+    scrape(args, args.url, visited_urls)
+    print(args.url)
+    print(args.r)
+    print(args.l)
+    print(args.p)
 
 if __name__ == '__main__':
     main()
